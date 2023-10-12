@@ -1,4 +1,7 @@
-% implement admittance computation with Mobius/Magnus scheme from 
+% 
+% This is a toy model which implements admittance computation 
+% with Mobius/Magnus scheme in a 2D waveguide. 
+% This is done following the article:  
 %
 % Multimodal admittance method in waveguides and singularity
 % behavior at high frequencies
