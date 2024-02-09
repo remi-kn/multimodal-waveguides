@@ -26,8 +26,8 @@ clc
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 % dimension of the rectangle (m)
-a = 0.05;
-b = 0.03;
+a = 0.05;   % width 
+b = 0.03;   % height 
 
 % number of propagation modes 
 nModes = 20;
@@ -38,85 +38,125 @@ Y = 0.;
 % sound speed
 c = 340;
 
+% wavenumber at which the field is computed
+k = 3/2/b;
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %%%% Build the geometrical transformation matrices from analytical expression
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-[Ca, Da, Ea, kn2] = buildMatricesCDE_analyticalRectangle (a/b, 1, nModes);
+[C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a/b, 1, nModes);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% Solve multimodal problem with the elephant's trunk
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-r0 = 1.25*2*b;
-thetaL = 2.62;
-L = thetaL*r0;%3.27*sqrt(b*a);
-nX = 800;
-X = linspace(-1*b, L+b, nX);
-[l, dl, kappa] = trunkElephant(X, L, b);
+r0 = 1.25*2*b;  % radius of the central part of the bent 
+thetaL = 2.62;  % angle of the bent
+L = thetaL*r0;  % length of curvilinear abscissa of the center of the guide
+nX = 800;       % number of discretization points
+X = linspace(-1*b, L+b, nX);    % generate curvilinear abscissa points
+% compute scaling factor l, derivative of the scaling factor dl, and 
+% curvatur kappa
+[l, dl, kappa] = trunkElephant(X, L, b);    
 
-Ad = zeros(nX, nModes, nModes);
-k = 3/1/b;
-K = diag(1i*sqrt((k*l(end))^2 - kn2));
-Ad(end,:,:) = K*l(end)^2;
+%% compute the admittance matrices from the end to the beginning using an 
+%  order 4 Magnus-Moebius scheme
 
-%% loop over the section to compute the admittance
+Ad = zeros(nX, nModes, nModes);         % preallocate admittance matrices
+K = diag(1i*sqrt((k*l(end))^2 - kn2));  % compute K matrix at the end
+% initialize admittance matrix at the end
+Ad(end,:,:) = K*l(end)^2;   
+
 for ii = 1:nX-1
-  xn = X(end - (ii-1));
-  xnp1 = X(end - (ii));
-  dx = xnp1 - xn;
+  xn = X(end - (ii-1));     % starting curvilinear abcissa
+  xnp1 = X(end - (ii));     % ending curvilinear abcissa
+  dx = xnp1 - xn;           % distance between abscissa
   
-  xA1 = xn + (0.5 - sqrt(3)/6)*dx;
-  [l, dl, kappa] = trunkElephant(xA1, L, b);
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  % compute the first abscissa of the Magnus-Moebius scheme
+  xH1 = xn + (0.5 - sqrt(3)/6)*dx;
+  % compute the corresponding scaling l, scaling derivative dl, and
+  % curvature kappa
+  [l, dl, kappa] = trunkElephant(xH1, L, b);
+  % build matrix K
   K = diag(1i*sqrt((k*l)^2 - kn2));
- A1 = [dl*Ea/l , (eye(nModes) - kappa*l*Ca)/(l^2);
- (K.^2 + kappa*l*(Ca*(k*l)^2 - Da)) , -dl*transpose(Ea)/l];
+  % build matrix H
+  H1 = [dl*E/l , (eye(nModes) - kappa*l*C)/(l^2);
+ (K.^2 + kappa*l*(C*(k*l)^2 - D)) , -dl*transpose(E)/l];
   
-  xA2 = xn + (0.5 + sqrt(3)/6)*dx;
-  [l, dl, kappa] = trunkElephant(xA2, L, b);
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  % compute the second abscissa of the Magnus-Moebius scheme
+  xH2 = xn + (0.5 + sqrt(3)/6)*dx;
+  % compute the corresponding scaling l, scaling derivative dl, and
+  % curvature kappa
+  [l, dl, kappa] = trunkElephant(xH2, L, b);
+  % build matrix K
   K = diag(1i*sqrt((k*l)^2 - kn2));
- A2 = [dl*Ea/l , (eye(nModes) - kappa*l*Ca)/(l^2);
- (K.^2 + kappa*l*(Ca*(k*l)^2 - Da)) , -dl*transpose(Ea)/l];  
+  % build matrix H
+  H2 = [dl*E/l , (eye(nModes) - kappa*l*C)/(l^2);
+ (K.^2 + kappa*l*(C*(k*l)^2 - D)) , -dl*transpose(E)/l];  
   
-  On = expm(0.5*dx*(A1 + A2) + sqrt(3)*(dx^2)*(A2*A1 - A1*A2 )/12);
+  % compute the exponential propagator
+  On = expm(0.5*dx*(H1 + H2) + sqrt(3)*(dx^2)*(H2*H1 - H1*H2 )/12);
   
+  % extract the submatrices of the propagator
   E1 = On(1:nModes, 1:nModes);
   E2 = On(1:nModes, nModes+1:end);
   E3 = On(nModes+1:end, 1:nModes);
   E4 = On(nModes+1:end, nModes+1:end);
   
+  % Compute the admittance matrix at the next point
   Ad(nX-ii, :, :) = (E3 + E4*squeeze(Ad(nX-(ii-1),:,:)))/...
   (E1 + E2*squeeze(Ad(nX-(ii-1),:,:)));
 
 end
 
-p = zeros(nModes, nX);
-p(1,1) = 1;
+%% compute the pressure amplitude from the beginning to the end using 
+% an order 4 Magnus-Moebius scheme
 
-%% loop over the section to compute the pressure amplitude
+p = zeros(nModes, nX);  % preallocate the pressure amplitude vectors
+% intialize the first vector to generate a plane wave at the input
+p(1,1) = 1;             
+
 for ii = 1:nX-1
-  xn = X(ii);
-  xnp1 = X(ii+1);
-  dx = xnp1 - xn;
+    
+  xn = X(ii);       % starting curvilinear abcissa
+  xnp1 = X(ii+1);   % ending curvilinear abcissa
+  dx = xn - xnp1;   % distance between abscissa
   
-    xA1 = xn + (0.5 - sqrt(3)/6)*dx;
-  [l, dl, kappa] = trunkElephant(xA1, L, b);
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  % compute the first abscissa of the Magnus-Moebius scheme
+  xH1 = xn + (0.5 - sqrt(3)/6)*dx;
+  % compute the corresponding scaling l, scaling derivative dl, and
+  % curvature kappa
+  [l, dl, kappa] = trunkElephant(xH1, L, b);
+  % build matrix K
   K = diag(1i*sqrt((k*l)^2 - kn2));
- A1 = [dl*Ea/l , (eye(nModes) - kappa*l*Ca)/(l^2);
- (K.^2 + kappa*l*(Ca*(k*l)^2 - Da)) , -dl*transpose(Ea)/l];  
+  % build matrix H
+  H1 = [dl*E/l , (eye(nModes) - kappa*l*C)/(l^2);
+  (K.^2 + kappa*l*(C*(k*l)^2 - D)) , -dl*transpose(E)/l];  
   
-  xA2 = xn + (0.5 + sqrt(3)/6)*dx;
-  [l, dl, kappa] = trunkElephant(xA2, L, b);
+  %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  % compute the second abscissa of the Magnus-Moebius scheme
+  xH2 = xn + (0.5 + sqrt(3)/6)*dx;
+  % compute the corresponding scaling l, scaling derivative dl, and
+  % curvature kappa
+  [l, dl, kappa] = trunkElephant(xH2, L, b);
+  % build matrix K
   K = diag(1i*sqrt((k*l)^2 - kn2));
- A2 = [dl*Ea/l , (eye(nModes) - kappa*l*Ca)/(l^2);
- (K.^2 + kappa*l*(Ca*(k*l)^2 - Da)) , -dl*transpose(Ea)/l];  
-  dx = -dx;
+  % build matrix H
+  H2 = [dl*E/l , (eye(nModes) - kappa*l*C)/(l^2);
+  (K.^2 + kappa*l*(C*(k*l)^2 - D)) , -dl*transpose(E)/l];  
   
-  On = expm(0.5*dx*(A1 + A2) + sqrt(3)*(dx^2)*(A2*A1 - A1*A2 )/12);
+  % compute the exponential propagator
+  On = expm(0.5*dx*(H1 + H2) + sqrt(3)*(dx^2)*(H2*H1 - H1*H2 )/12);
   
+  % extract the submatrices of the propagator
   E1 = On(1:nModes, 1:nModes);
   E2 = On(1:nModes, nModes+1:end);
   
+  % compuute the pressure amplitude vector at the next abscissa
   p(:,ii+1) = (E1 + E2*squeeze(Ad(ii+1,:,:)))\p(:,ii);
 end
 
@@ -126,65 +166,79 @@ end
 %% Compute analytical eigenmodes indexes
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-% sort modes indexes
-k2 = zeros(10000,1);
-mn = zeros(10000,2);
-idx = 0;
-for m=1:100
-  for n=1:100
-    idx = idx + 1;
-    k2(idx,1) = ((m-1)/a)^2+((n-1)/b)^2;
-    mn(idx,:) = [m,n];
-  end
-end
-[k2, idx] = sort(k2);
-mn = mn(idx,:);
-
-mn = mn - 1;
-nx = 800;
+nx = 800;   % nummber along x axis
+% generate the x coordinate of the points
 x = linspace(-b/4, 6*b, nx);
-ny = 800;
+ny = 800;   % nummber along y axis
+% generate the y coordinate of the points
 y = linspace(-b, 3.5*b, ny);
+% preallocate the corresponding transformed coordinates X and Y
 Xp = zeros(nx,ny);
 Yp = zeros(nx,ny);
+% set the transverse transformed coordinate to 0 toextract the field on 
+% the central (X, Y) plane
+Zp = 0.;
+% preallocate the acoustic pressure
 Pp = zeros(nx,ny);
+% preallocate Magnus-Moebius point index
+idx = 0;
 
 
 for ii = 1:nx
   for jj = 1:ny
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Compute the (X, Y) transformed coordinates corresponding 
+    % to the cartesian (x, y) coordinates 
+    
+    % if the points is in the small straight tube section
     if and(y(jj)<0, abs(x(ii)) <= 0.125)
       Xp(ii,jj) = y(jj);
       Yp(ii,jj) = 2*x(ii)/b+0.5;
+    % if the points is in the bent
     else
+      % compute the distance to the center of curvature (r0, 0)
       d = sqrt((x(ii) - r0)^2 + y(jj)^2);
+      % compute the corresponding curvilinear abscissa in the bent
       Xp(ii,jj) = acos((r0 - x(ii))/d)*r0;
+      % compute the corresponding scaling l, scaling derivative dl, and
+      % curvature kappa
       [l, dl, kappa] = trunkElephant(Xp(ii,jj), L, b);
+      % compute the corresponding transformed coordinate Yp in the bent
       Yp(ii,jj) = (r0-d)/l+0.5;
+      
+      % if the point is outside of the bent compute the transformed 
+      % coordinates in the large straight tube section
       if Xp(ii,jj) > L
         if y(jj)>0
-        theta =acos((r0-x(ii))/d) - L/r0;
-      else
-        theta =  pi - L/r0 + acos((x(ii) - r0)/d);
-      end
+          theta =acos((r0-x(ii))/d) - L/r0;
+        else
+          theta =  pi - L/r0 + acos((x(ii) - r0)/d);
+        end
         Xp(ii,jj) = L + d*sin(theta);
         Yp(ii,jj) = (r0 - d*cos(theta))/2/b+0.5;
       end
     end
     
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    % Compute the acoustic pressure in the waveguide
+    
+    % check if the point is inside the waveguide, and if so,
+    % identify the index of the closest Magnus-Moebius scheme point
+    pointInside = false;
     if and(and(Xp(ii,jj) <= L+b, Xp(ii,jj) > 0), and(Yp(ii,jj)<1, Yp(ii,jj)>0))
       [toto, idx] = min(abs(X - Xp(ii,jj)));
-      for mm = 1:nModes
-        if mn(mm,1) == 0, Mm = 1; else, Mm = sqrt(2); end
-        if mn(mm,2) == 0, Nn = 1; else, Nn = sqrt(2); end
-        Pp(ii,jj) = Pp(ii,jj) + p(mm,idx)*(Mm*cos(mn(mm,1)*pi*0.1) + ...
-        Nn*cos(mn(mm,2)*pi*Yp(ii,jj)));
-      end
+      pointInside = true;
     elseif and(and(Xp(ii,jj) <0, Xp(ii,jj) > -b), and(Yp(ii,jj)<1, Yp(ii,jj)>0))
-      [idx] = find(X>Xp(ii,jj),1,"first");
+      idx = find(X>Xp(ii,jj), 1, "first");
+      pointInside = true;
+    end
+    
+    % if the point is inside compute the acoustic pressure
+    if pointInside
       for mm = 1:nModes
         if mn(mm,1) == 0, Mm = 1; else, Mm = sqrt(2); end
         if mn(mm,2) == 0, Nn = 1; else, Nn = sqrt(2); end
-        Pp(ii,jj) = Pp(ii,jj) + p(mm,idx)*(Mm*cos(mn(mm,1)*pi*0.1) + ...
+        Pp(ii,jj) = Pp(ii,jj) + p(mm,idx)*(Mm*cos(mn(mm,1)*pi*Zp) + ...
         Nn*cos(mn(mm,2)*pi*Yp(ii,jj)));
       end
     end
@@ -217,7 +271,7 @@ xlim([-b/2 6.5*b])
 print(h, "-dpng", "contour-elephant-analytical.png");
 
 
-
+%%
 function [l, dl, kappa] = trunkElephant(X, L, b)
   nX = length(X);
   
@@ -240,8 +294,8 @@ function [l, dl, kappa] = trunkElephant(X, L, b)
 end
 
 
-
-function [Ca, Da, Ea, kn2] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
+%% 
+function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
   
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
   %% Compute analytical eigenmodes indexes
@@ -273,7 +327,7 @@ function [Ca, Da, Ea, kn2] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
   %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
 
   %% preallocation 
-  Ca = zeros(nModes, nModes);
+  C = zeros(nModes, nModes);
 
   for ii=1:nModes
     for jj = 1:nModes
@@ -284,14 +338,14 @@ function [Ca, Da, Ea, kn2] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
       
       if m == o
         if n == p
-          Ca(ii,jj) = b/2;
+          C(ii,jj) = b/2;
         elseif and(n ~= 0, p ~= 0)
-          Ca(ii,jj) = b*((cos((n+p)*pi)-1)/((n+p)^2) + ...
+          C(ii,jj) = b*((cos((n+p)*pi)-1)/((n+p)^2) + ...
           (cos((n-p)*pi)-1)/((n-p)^2))/(pi^2);
         elseif and(n == 0, p ~= 0)
-          Ca(ii,jj) = sqrt(2)*b*(cos(p*pi)-1)/((p*pi)^2);
+          C(ii,jj) = sqrt(2)*b*(cos(p*pi)-1)/((p*pi)^2);
         else
-          Ca(ii,jj) = sqrt(2)*b*(cos(n*pi)-1)/((n*pi)^2);
+          C(ii,jj) = sqrt(2)*b*(cos(n*pi)-1)/((n*pi)^2);
         end
       end
       
@@ -305,7 +359,7 @@ function [Ca, Da, Ea, kn2] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
   %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
 
   %% preallocation 
-  Da = zeros(nModes, nModes);
+  D = zeros(nModes, nModes);
 
   for ii = 1:nModes
     for jj = 1:nModes
@@ -313,8 +367,6 @@ function [Ca, Da, Ea, kn2] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
       n = mn(ii,2);
       o = mn(jj,1);
       p = mn(jj,2);
-      
-  %%    if and(ii == 6, jj == 5), keyboard, end
       
       %% Compute the first part of the integral
       I1 = 0;
@@ -342,7 +394,7 @@ function [Ca, Da, Ea, kn2] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
         end
       end
       
-      Da(ii,jj) = I1 + I2;
+      D(ii,jj) = I1 + I2;
       
     end
   end
@@ -351,7 +403,7 @@ function [Ca, Da, Ea, kn2] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
   %% assembly of matrix E
   %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
 
-  Ea = zeros(nModes, nModes);
+  E = zeros(nModes, nModes);
 
   for ii = 1:nModes
     for jj = 1:nModes
@@ -384,7 +436,7 @@ function [Ca, Da, Ea, kn2] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
         end
       end
       
-      Ea(ii,jj) = I1 + I2;
+      E(ii,jj) = I1 + I2;
 
     end
   end
