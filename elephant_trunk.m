@@ -30,7 +30,7 @@ a = 0.05;   % width
 b = 0.03;   % height 
 
 % number of propagation modes 
-nModes = 20;
+nModes = 50;
 
 % admittance at the boundary
 Y = 0.;
@@ -42,7 +42,7 @@ c = 340;
 k = 3/2/b;
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%%% Build the geometrical transformation matrices from analytical expression
+%% Build the geometrical transformation matrices from analytical expression
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a/b, 1, nModes);
@@ -246,55 +246,72 @@ for ii = 1:nx
 end
 Pp(Pp == 0) = nan;
 
-h = figure;
-imagesc(x,y,fliplr(real(Pp)'))
-colormap("jet")
-axis xy
-axis equal
-
-print(h, "-dpng", "colormap-elephant-analytical.png");
-
+% compute the contour of the waveguide to display them
 theta = linspace(0, thetaL, 100);
 R1 = 3*b*((theta./thetaL).^3)/2 - 9*b*((theta./thetaL).^2)/4 + r0 -b/4;
 translat = [sqrt(r0^2 + b^2)*cos(pi-thetaL-atan(b/r0)) - r0*cos(pi-thetaL),...
 sqrt(r0^2 + b^2)*sin(pi-thetaL-atan(b/r0)) - r0*sin(pi-thetaL)];
 R2 = -3*b*((theta./thetaL).^3)/2 + 9*b*((theta./thetaL).^2)/4 + r0 +b/4;
+xLowerCont = [b/4, b/4, r0-R1.*cos(theta), r0-R1(end).*cos(theta(end)) + translat(1)];
+yLowerCont = [-b, 0, R1.*sin(theta), R1(end).*sin(theta(end)) + translat(2)];
+xUpperCont = [-b/4, -b/4, r0-R2.*cos(theta), r0-R2(end).*cos(theta(end)) + translat(1)];
+yUpperCont = [-b, 0, R2.*sin(theta), R2(end).*sin(theta(end)) + translat(2)];
 
-h = figure; contour(x,y,real(Pp.'),100), axis equal
-colormap("jet")
+% plot the acoustic pressure
+h = figure;
+% imagesc(x,y,real(Pp)')
+imagesc(x,y,20*log10(abs(Pp)'))
+colorbar
 hold on
-plot([b/4, b/4, r0-R1.*cos(theta), r0-R1(end).*cos(theta(end)) + translat(1)],...
- [-b, 0, R1.*sin(theta), R1(end).*sin(theta(end)) + translat(2)], "k")
-plot([-b/4, -b/4, r0-R2.*cos(theta), r0-R2(end).*cos(theta(end)) + translat(1)],...
- [-b, 0, R2.*sin(theta), R2(end).*sin(theta(end)) + translat(2)], "k")
+plot(xUpperCont, yUpperCont, "k")
+plot(xLowerCont, yLowerCont, "k")
+axis xy
+axis equal
+print(h, "-dpng", "colormap.png");
+
+% plot the contour of the acoustic pressure
+h = figure; contour(x,y,real(Pp.'),100), axis equal
+hold on
+plot(xUpperCont, yUpperCont, "k")
+plot(xLowerCont, yLowerCont, "k")
 xlim([-b/2 6.5*b])
-print(h, "-dpng", "contour-elephant-analytical.png");
+print(h, "-dpng", "contour.png");
 
 
-%%
+%% Function to compute the scaling factor l, the derivative of the 
+% scaling fator and the curvature at a specific survilinear abscissa X
+
 function [l, dl, kappa] = trunkElephant(X, L, b)
-  nX = length(X);
+  nX = length(X);       % number of requested abscissa
   
-  l = zeros(1,nX);
+  % preallocate the output variables
+  l = zeros(1,nX);      
   dl = zeros(1,nX);
   kappa = zeros(1,nX);
   
+  % if the point is in the small tube
   l(X<0) = b/2;
   dl(X<0) = 0;
   kappa(X<0) = 0;
   
+  % if the point is inside the bent
   l(and(X>0, X<L)) = 0.5*b*(1 + 9*(X(and(X>0, X<L))/L).^2 - ...
   6*(X(and(X>0, X<L))/L).^3);
   dl(and(X>0, X<L)) = 9*b*X(and(X>0, X<L)).*(1-X(and(X>0, X<L))/L)/(L^2);
   kappa(and(X>0, X<L)) = 1/2/1.25/b;
   
+  % if the point is in the large tube
   l(X>L) = 2*b;
   dl(X>L) = 0;
   kappa(X>L) = 0;
 end
 
 
-%% 
+%% A function to compute the propagation matrices C, D, and E, the squared 
+% wavenumbers of the transverse modes kn2 and the modes indexes mn
+%
+% The expressions are given in the appendix of (blandin et al, 2022)
+
 function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes)
   
   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -322,11 +339,11 @@ function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes
   %% remove the +1 shift of the index (necessary for the fonction computing the analytical modes)
   mn = mn - 1;
 
-  %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
+  % *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
   %% assembly of matrix C
-  %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
+  % *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
 
-  %% preallocation 
+  % preallocation 
   C = zeros(nModes, nModes);
 
   for ii=1:nModes
@@ -352,13 +369,11 @@ function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes
     end
   end
 
-
-
   %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
   %% assembly of matrix D
   %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
 
-  %% preallocation 
+  % preallocation 
   D = zeros(nModes, nModes);
 
   for ii = 1:nModes
@@ -368,7 +383,7 @@ function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes
       o = mn(jj,1);
       p = mn(jj,2);
       
-      %% Compute the first part of the integral
+      % Compute the first part of the integral
       I1 = 0;
       if and( m == o, and( m ~= 0, o ~= 0))
         if n == p
@@ -383,7 +398,7 @@ function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes
         end
       end
       
-      %% Compute the second part of the integral
+      % Compute the second part of the integral
       I2 = 0;
       if m == o
         if and(n == p, and(n ~= 0, p ~= 0))
@@ -399,10 +414,11 @@ function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes
     end
   end
 
-  %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
+  % *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
   %% assembly of matrix E
-  %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
-
+  % *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
+  
+  % preallocation
   E = zeros(nModes, nModes);
 
   for ii = 1:nModes
@@ -412,7 +428,7 @@ function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes
       o = mn(jj,1);
       p = mn(jj,2);
       
-      %% Compute the first part of the integral
+      % Compute the first part of the integral
       I1 = 0;
       if and(n == p, o ~= 0)
         if m == 0
@@ -424,7 +440,7 @@ function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes
         end
       end
       
-      %% Compute the second part of the integral
+      % Compute the second part of the integral
       I2 = 0;
       if and(m == o, p ~= 0)
         if n == 0
@@ -441,9 +457,9 @@ function [C, D, E, kn2, mn] = buildMatricesCDE_analyticalRectangle (a, b, nModes
     end
   end
   
-  %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
+  % *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
   %% Wavnumbers
-  %% *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
+  % *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   *   * 
   
   kn2 = (mn(1:nModes,1)*pi/a).^2 + (mn(1:nModes,2)*pi/b).^2;
 
