@@ -12,9 +12,13 @@ function generate_geo_from_area_function(x, r, file_name, conical_segments)
 
     sep = ';';          % column separator for csv file
     n_x = length(x);
+    
+    if min(size(x)) == 1
+        x = [x, zeros(size(x)), zeros(size(x))];
+    end
 
     % generate circle contour
-    nTheta = 100;
+    nTheta = 120;
     theta = linspace(0, 2*pi, nTheta);
     cont = zeros(nTheta, 2);
     for ii = 1:nTheta
@@ -35,12 +39,12 @@ function generate_geo_from_area_function(x, r, file_name, conical_segments)
 
     for c = 1:n_x
         % write x coordinates
-        fprintf(fid, '%f%s', x(c), sep); % x coordinate of center
+        fprintf(fid, '%f%s', x(c,1), sep); % x coordinate of center
         fprintf(fid, '%f%s', no(1), sep); % x coordinate of normal
         fprintf(fid, '%f%s', scaleIn, sep);    % entrance scaling factor
         % x coordinate of the contour
         for t = 1:nTheta
-            fprintf(fid, '%f%s', r(c)*cont(t,1), sep);  
+            fprintf(fid, '%f%s', r(c)*cont(t,1) + x(c,2), sep);  
         end
         fprintf(fid, '\n');
 
@@ -50,7 +54,7 @@ function generate_geo_from_area_function(x, r, file_name, conical_segments)
         fprintf(fid, '%f%s', scaleOut(c), sep);    % exit scaling factor
         % y coordinate of the contour
         for t = 1:nTheta
-            fprintf(fid, '%f%s', r(c)*cont(t,2), sep);  
+            fprintf(fid, '%f%s', r(c)*cont(t,2) + x(c,3), sep);  
         end
         fprintf(fid, '\n');
     end
