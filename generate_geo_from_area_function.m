@@ -18,7 +18,7 @@ function generate_geo_from_area_function(x, r, file_name, conical_segments)
     end
 
     % generate circle contour
-    nTheta = 120;
+    nTheta = 100;
     theta = linspace(0, 2*pi, nTheta);
     cont = zeros(nTheta, 2);
     for ii = 1:nTheta
@@ -45,6 +45,7 @@ function generate_geo_from_area_function(x, r, file_name, conical_segments)
         % x coordinate of the contour
         for t = 1:nTheta
             fprintf(fid, '%f%s', r(c)*cont(t,1) + x(c,2), sep);  
+%             fprintf(fid, '%f%s', r(c)*cont(t,1), sep);  
         end
         fprintf(fid, '\n');
 
@@ -54,6 +55,7 @@ function generate_geo_from_area_function(x, r, file_name, conical_segments)
         fprintf(fid, '%f%s', scaleOut(c), sep);    % exit scaling factor
         % y coordinate of the contour
         for t = 1:nTheta
+%             fprintf(fid, '%f%s', r(c)*cont(t,2), sep);  
             fprintf(fid, '%f%s', r(c)*cont(t,2) + x(c,3), sep);  
         end
         fprintf(fid, '\n');
